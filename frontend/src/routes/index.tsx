@@ -1,8 +1,14 @@
 import { io, Socket } from "socket.io-client";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Line } from "react-konva";
+import { Stage, Layer, Line, Rect } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
+import {
+  lineMouseDown,
+  lineMouseMove,
+  rectMouseDown,
+  rectMouseMove,
+} from "../lib/mouseEvents";
 
 const url = "http://localhost:8000";
 export const Route = createFileRoute("/")({
@@ -14,25 +20,32 @@ function socket() {
   const [tool, setTool] = useState("pen");
   const [lines, setLines] = useState<any[]>([]);
   const isDrawingRef = useRef(false);
+  const [shapes, setShapes] = useState<any[]>([]);
   const lastPosRef = useRef({ x: 0, y: 0 });
+  const startPosRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     if (!socketRef.current) {
       socketRef.current = io(url);
     }
     socketRef.current.on("load-board", (boardStates: any[]) => {
-      console.log("Loading board states:", boardStates);
-      setLines([...boardStates]);
-      console.log("Current lines state:", lines);
+      const loadedLines = boardStates.filter(
+        (item) => item.tool === "pen" || item.tool === "eraser"
+      );
+      const loadedShapes = boardStates
+        .filter((item) => item.type === "rectangle")
+        .map((item) => ({ type: item.type, ...item }));
+      setLines(loadedLines);
+      setShapes(loadedShapes);
     });
-    socketRef.current.on("start", (data: any) => {
+    socketRef.current.on("start-line", (data: any) => {
       setLines((prev) => {
         const newLines = [...prev, { tool: data.tool, points: data.points }];
         return newLines;
       });
     });
 
-    socketRef.current.on("drawing", (point) => {
+    socketRef.current.on("drawing-line", (point) => {
       setLines((prev) => {
         const lastLine = prev[prev.length - 1];
         if (!lastLine) return prev;
@@ -44,40 +57,48 @@ function socket() {
       });
     });
 
+    socketRef.current.on("start-rect", (data) => {
+      setShapes((prev) => {
+        return [
+          ...prev,
+          { type: data.tool, x: data.x, y: data.y, width: 0, height: 0 },
+        ];
+      });
+    });
+
+    socketRef.current.on("drawing-rect", (data) => {
+      setShapes((prev) => {
+        const lastShape = prev[prev.length - 1];
+        if (!lastShape) return prev;
+        const updatedShape = {
+          ...lastShape,
+          x: data.x,
+          y: data.y,
+          width: data.width,
+          height: data.height,
+        };
+        return [...prev.slice(0, -1), updatedShape];
+      });
+    });
     socketRef.current.on("end-line", () => {});
   }, []);
 
-  const MouseMove = (e: any) => {
-    if (!isDrawingRef.current) {
-      return;
-    }
-    const stage = e.target.getStage();
-    if (!stage) return;
-    const point = stage.getPointerPosition();
-    let lastLine = lines[lines.length - 1];
-    if (!point || !lastLine) return;
-    lastLine.points = lastLine.points.concat([point.x, point.y]);
-    lines.splice(lines.length - 1, 1, lastLine);
-    setLines(lines.concat());
-    socketRef.current?.emit("drawing", { x: point.x, y: point.y });
-  };
-
-  const MouseDown = (e: any) => {
-    isDrawingRef.current = true;
-    const stage = e.target?.getStage();
-    if (!stage) return;
-    const pos = stage.getPointerPosition();
-    if (!pos) return;
-    setLines([...lines, { tool, points: [pos.x, pos.y] }]);
-    socketRef.current?.emit("start", { tool, points: [pos.x, pos.y] });
-  };
-
   const handleMouseDown = (e: KonvaEventObject<MouseEvent>) => {
-    MouseDown(e);
+    if (tool === "rectangle") {
+      rectMouseDown(e, tool, setShapes, isDrawingRef, startPosRef, socketRef);
+    }
+    if (tool === "pen" || tool === "eraser") {
+      lineMouseDown(e, isDrawingRef, setLines, socketRef, tool);
+    }
   };
 
   const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
-    MouseMove(e);
+    if (tool === "rectangle") {
+      rectMouseMove(e, shapes, setShapes, isDrawingRef, startPosRef, socketRef);
+    }
+    if (tool === "pen" || tool === "eraser") {
+      lineMouseMove(e, isDrawingRef, lines, setLines, socketRef);
+    }
   };
 
   const handleMouseUp = () => {
@@ -86,11 +107,21 @@ function socket() {
   };
 
   const handleTouchStart = (e: KonvaEventObject<TouchEvent>) => {
-    MouseDown(e);
+    if (tool === "rectangle") {
+      rectMouseDown(e, tool, setShapes, isDrawingRef, startPosRef);
+    }
+    if (tool === "pen" || tool === "eraser") {
+      lineMouseDown(e, isDrawingRef, setLines, socketRef, tool);
+    }
   };
 
   const handleTouchMove = (e: KonvaEventObject<TouchEvent>) => {
-    MouseMove(e);
+    if (tool === "rectangle") {
+      rectMouseMove(e, shapes, setShapes, isDrawingRef, startPosRef);
+    }
+    if (tool === "pen" || tool === "eraser") {
+      lineMouseMove(e, isDrawingRef, lines, setLines, socketRef);
+    }
   };
 
   return (
@@ -102,7 +133,9 @@ function socket() {
         }}
       >
         <option value="pen">Pen</option>
-        <option value="eraser">Eraser</option>
+        <option value="rectangle">Rectangle</option>
+        <option value="circle">Circle</option>
+        <option value="drag">Drag</option>
       </select>
       <Stage
         width={window.innerWidth}
@@ -115,20 +148,43 @@ function socket() {
         onTouchEnd={handleMouseUp}
       >
         <Layer>
-          {lines.map((line, i) => (
-            <Line
-              key={i}
-              points={line.points}
-              stroke="#df4b26"
-              strokeWidth={5}
-              tension={0.5}
-              lineCap="round"
-              lineJoin="round"
-              globalCompositeOperation={
-                line.tool === "eraser" ? "destination-out" : "source-over"
-              }
-            />
-          ))}
+          {lines.map((line, i) => {
+            if (line.tool === "pen" || line.tool === "eraser") {
+              return (
+                <Line
+                  key={i}
+                  points={line.points}
+                  stroke={line.tool === "eraser" ? "#fff" : "#df4b26"}
+                  strokeWidth={5}
+                  tension={0.5}
+                  lineCap="round"
+                  lineJoin="round"
+                  globalCompositeOperation={
+                    line.tool === "eraser" ? "destination-out" : "source-over"
+                  }
+                  draggable={tool === "drag"}
+                />
+              );
+            }
+            return null;
+          })}
+          {shapes.map((shape, i) => {
+            if (shape.type === "rectangle") {
+              return (
+                <Rect
+                  key={i}
+                  x={shape.x}
+                  y={shape.y}
+                  width={shape.width}
+                  height={shape.height}
+                  stroke="blue"
+                  strokeWidth={2}
+                  draggable={tool === "drag"}
+                  fill={"rgba(0,0,0,0.1)"}
+                />
+              );
+            }
+          })}
         </Layer>
       </Stage>
     </div>
