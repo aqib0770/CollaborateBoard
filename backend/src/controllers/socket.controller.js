@@ -46,6 +46,32 @@ export default function socketController(io) {
       io.emit("drawing-rect", data);
     });
 
+    socket.on("start-ellipse", (data) => {
+      const newEllipse = {
+        type: data.tool,
+        x: data.x,
+        y: data.y,
+        radiusX: data.radiusX,
+        radiusY: data.radiusY,
+      };
+      boardStates.push(newEllipse);
+      io.emit("start-ellipse", data);
+    });
+
+    socket.on("drawing-ellipse", (data) => {
+      const lastEllipse = boardStates.findLast(
+        (item) => item.type === "circle" && !item.complete
+      );
+      if (lastEllipse) {
+        lastEllipse.x = data.x;
+        lastEllipse.y = data.y;
+        lastEllipse.radiusX = data.radiusX;
+        lastEllipse.radiusY = data.radiusY;
+      }
+      io.emit("drawing-ellipse", data);
+      console.log("Ellipse drawing", lastEllipse, data);
+    });
+
     socket.on("end", () => {
       const lastLine = boardStates[boardStates.length - 1];
       if (lastLine) {
