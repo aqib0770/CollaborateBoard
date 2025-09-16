@@ -7,7 +7,7 @@ export default function socketController(io) {
     socket.on("start-line", (data) => {
       const newLine = { tool: data.tool, points: data.points };
       boardStates.push(newLine);
-      io.emit("start", data);
+      io.emit("start-line", data);
     });
 
     socket.on("start-rect", (data) => {
