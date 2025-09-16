@@ -113,7 +113,7 @@ function socket() {
     socketRef.current.on("end-line", () => {});
   }, []);
 
-  const handleMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+  const mouseDown = (e: any) => {
     if (tool === "rectangle") {
       rectMouseDown(e, tool, setShapes, isDrawingRef, startPosRef, socketRef);
     }
@@ -132,7 +132,7 @@ function socket() {
     }
   };
 
-  const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
+  const mouseMove = (e: any) => {
     if (tool === "rectangle") {
       rectMouseMove(e, shapes, setShapes, isDrawingRef, startPosRef, socketRef);
     }
@@ -151,47 +151,25 @@ function socket() {
     }
   };
 
+  const handleMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+    mouseDown(e);
+  };
+
+  const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
+    mouseMove(e);
+  };
+
   const handleMouseUp = () => {
     isDrawingRef.current = false;
     socketRef.current?.emit("end");
   };
 
   const handleTouchStart = (e: KonvaEventObject<TouchEvent>) => {
-    if (tool === "rectangle") {
-      rectMouseDown(e, tool, setShapes, isDrawingRef, startPosRef);
-    }
-    if (tool === "circle") {
-      ellipseMouseDown(
-        e,
-        tool,
-        setShapes,
-        isDrawingRef,
-        startPosRef,
-        socketRef
-      );
-    }
-    if (tool === "pen" || tool === "eraser") {
-      lineMouseDown(e, isDrawingRef, setLines, socketRef, tool);
-    }
+    mouseDown(e);
   };
 
   const handleTouchMove = (e: KonvaEventObject<TouchEvent>) => {
-    if (tool === "rectangle") {
-      rectMouseMove(e, shapes, setShapes, isDrawingRef, startPosRef);
-    }
-    if (tool === "circle") {
-      ellipseMouseMove(
-        e,
-        shapes,
-        setShapes,
-        isDrawingRef,
-        startPosRef,
-        socketRef
-      );
-    }
-    if (tool === "pen" || tool === "eraser") {
-      lineMouseMove(e, isDrawingRef, lines, setLines, socketRef);
-    }
+    mouseMove(e);
   };
 
   return (
