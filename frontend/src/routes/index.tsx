@@ -1,13 +1,15 @@
 import { io, Socket } from "socket.io-client";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Line, Rect } from "react-konva";
+import { Stage, Layer, Line, Rect, Ellipse } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import {
   lineMouseDown,
   lineMouseMove,
   rectMouseDown,
   rectMouseMove,
+  ellipseMouseDown,
+  ellipseMouseMove,
 } from "../lib/mouseEvents";
 
 const url = "http://localhost:8000";
@@ -33,8 +35,9 @@ function socket() {
         (item) => item.tool === "pen" || item.tool === "eraser"
       );
       const loadedShapes = boardStates
-        .filter((item) => item.type === "rectangle")
+        .filter((item) => item.type !== "pen" && item.type !== "eraser")
         .map((item) => ({ type: item.type, ...item }));
+      console.log("loadedShapes", loadedShapes);
       setLines(loadedLines);
       setShapes(loadedShapes);
     });
@@ -80,12 +83,49 @@ function socket() {
         return [...prev.slice(0, -1), updatedShape];
       });
     });
+
+    socketRef.current.on("start-ellipse", (data) => {
+      console.log("start-ellipse", data);
+      setShapes((prev) => {
+        return [
+          ...prev,
+          { type: data.tool, x: data.x, y: data.y, radiusX: 0, radiusY: 0 },
+        ];
+      });
+    });
+
+    socketRef.current.on("drawing-ellipse", (data) => {
+      setShapes((prev) => {
+        const lastShape = prev[prev.length - 1];
+        if (!lastShape) return prev;
+        const updatedShape = {
+          ...lastShape,
+          x: data.x,
+          y: data.y,
+          radiusX: data.radiusX,
+          radiusY: data.radiusY,
+        };
+        console.log("updatedShape", updatedShape);
+        return [...prev.slice(0, -1), updatedShape];
+      });
+    });
+
     socketRef.current.on("end-line", () => {});
   }, []);
 
   const handleMouseDown = (e: KonvaEventObject<MouseEvent>) => {
     if (tool === "rectangle") {
       rectMouseDown(e, tool, setShapes, isDrawingRef, startPosRef, socketRef);
+    }
+    if (tool === "circle") {
+      ellipseMouseDown(
+        e,
+        tool,
+        setShapes,
+        isDrawingRef,
+        startPosRef,
+        socketRef
+      );
     }
     if (tool === "pen" || tool === "eraser") {
       lineMouseDown(e, isDrawingRef, setLines, socketRef, tool);
@@ -95,6 +135,16 @@ function socket() {
   const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
     if (tool === "rectangle") {
       rectMouseMove(e, shapes, setShapes, isDrawingRef, startPosRef, socketRef);
+    }
+    if (tool === "circle") {
+      ellipseMouseMove(
+        e,
+        shapes,
+        setShapes,
+        isDrawingRef,
+        startPosRef,
+        socketRef
+      );
     }
     if (tool === "pen" || tool === "eraser") {
       lineMouseMove(e, isDrawingRef, lines, setLines, socketRef);
@@ -110,6 +160,16 @@ function socket() {
     if (tool === "rectangle") {
       rectMouseDown(e, tool, setShapes, isDrawingRef, startPosRef);
     }
+    if (tool === "circle") {
+      ellipseMouseDown(
+        e,
+        tool,
+        setShapes,
+        isDrawingRef,
+        startPosRef,
+        socketRef
+      );
+    }
     if (tool === "pen" || tool === "eraser") {
       lineMouseDown(e, isDrawingRef, setLines, socketRef, tool);
     }
@@ -118,6 +178,16 @@ function socket() {
   const handleTouchMove = (e: KonvaEventObject<TouchEvent>) => {
     if (tool === "rectangle") {
       rectMouseMove(e, shapes, setShapes, isDrawingRef, startPosRef);
+    }
+    if (tool === "circle") {
+      ellipseMouseMove(
+        e,
+        shapes,
+        setShapes,
+        isDrawingRef,
+        startPosRef,
+        socketRef
+      );
     }
     if (tool === "pen" || tool === "eraser") {
       lineMouseMove(e, isDrawingRef, lines, setLines, socketRef);
@@ -181,6 +251,18 @@ function socket() {
                   strokeWidth={2}
                   draggable={tool === "drag"}
                   fill={"rgba(0,0,0,0.1)"}
+                />
+              );
+            }
+            if (shape.type === "circle") {
+              return (
+                <Ellipse
+                  key={i}
+                  x={shape.x}
+                  y={shape.y}
+                  radiusX={shape.radiusX}
+                  radiusY={shape.radiusY}
+                  stroke={"green"}
                 />
               );
             }
